@@ -1,0 +1,23 @@
+{
+  "resources": {
+    "backend": {
+      "env_vars": {
+        "DB_PASS": "postgres",
+        "DB_URL": "postgres://localhost:5432",
+        "DB_USER": "postgres"
+      },
+      "ports": [
+        "8080"
+      ],
+      "type": "ec2"
+    },
+    "mydb": {
+      "exposes": {
+        "Url": "postgres://localhost:5432",
+        "User": "postgres",
+        "Password": "postgres"
+      },
+      "type": "postgres"
+    }
+  }
+}
