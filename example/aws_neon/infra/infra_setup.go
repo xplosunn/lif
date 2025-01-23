@@ -8,7 +8,7 @@ func main() {
 	defer lif.LifBuild()
 
 	// db exposes url, user, password
-	db := lif.NewNeonPostgres("mydb")
+	dbExposes := lif.NewNeonPostgres("mydb")
 
 	// backend
 	_ = lif.NewAwsEC2(
@@ -16,8 +16,8 @@ func main() {
 	).OpenPorts([]string{
 		"8080",
 	}).WithEnvVars(map[string]string{
-		"DB_URL":  db.Exposes.Url,
-		"DB_USER": db.Exposes.User,
-		"DB_PASS": db.Exposes.Password,
+		"DB_URL":  dbExposes.Url,
+		"DB_USER": dbExposes.User,
+		"DB_PASS": dbExposes.Password,
 	})
 }

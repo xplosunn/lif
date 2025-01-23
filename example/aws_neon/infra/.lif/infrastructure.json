@@ -2,9 +2,9 @@
   "resources": {
     "backend": {
       "env_vars": {
-        "DB_PASS": "postgres",
-        "DB_URL": "postgres://localhost:5432",
-        "DB_USER": "postgres"
+        "DB_PASS": "ref:mydb:password",
+        "DB_URL": "ref:mydb:url",
+        "DB_USER": "ref:mydb:user"
       },
       "ports": [
         "8080"
@@ -12,11 +12,6 @@
       "type": "ec2"
     },
     "mydb": {
-      "exposes": {
-        "Url": "postgres://localhost:5432",
-        "User": "postgres",
-        "Password": "postgres"
-      },
       "type": "postgres"
     }
   }
