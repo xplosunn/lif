@@ -1,0 +1,18 @@
+{
+  "resources": {
+    "backend": {
+      "env_vars": {
+        "DB_PASS": "ref:mydb:password",
+        "DB_URL": "ref:mydb:url",
+        "DB_USER": "ref:mydb:user"
+      },
+      "ports": [
+        "8080"
+      ],
+      "type": "ec2"
+    },
+    "mydb": {
+      "type": "postgres"
+    }
+  }
+}

@@ -30,3 +30,6 @@ go.work.sum
 
 # secrets
 secrets.json
+
+#vscode
+.vscode/
