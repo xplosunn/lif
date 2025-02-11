@@ -223,10 +223,6 @@ func GeneratePostgresComposeMap(dbname string, resourceFields map[string]any) (m
 	user := generateRandomString(16)
 	password := generateRandomString(16)
 
-	println("dbname", dbname)
-	println("user", user)
-	println("password", password)
-
 	// Store concrete values in composeResources
 	composeResources[dbname] = map[string]any{
 		"url":      "postgres://" + user + ":" + password + "@mydb:5432/" + dbname,
@@ -275,6 +271,10 @@ func GenerateEC2ComposeMap(resourceMap map[string]any) (map[string]any, error) {
 		}
 	}
 
+	ports := resourceMap["ports"].([]string)
+	for i, port := range ports {
+		ports[i] = port + ":" + port
+	}
 	compose := map[string]any{
 		"environment": resolvedEnvVars,
 		"ports":       resourceMap["ports"],
@@ -310,7 +310,6 @@ func resolveLocalRef(ref string) (string, error) {
 	property := parts[2]
 
 	if value, err := resolveComposeResource(resourceName, property); err == nil {
-		fmt.Println("value", value)
 		return value, nil
 	}
 
