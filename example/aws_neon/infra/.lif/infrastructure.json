@@ -1,6 +1,7 @@
 {
   "resources": {
     "backend": {
+      "dockerfile": "/Users/gianspadafora/projects/lif/example/aws_neon/backend/Dockerfile",
       "env_vars": {
         "DB_PASS": "ref:mydb:password",
         "DB_URL": "ref:mydb:url",
@@ -12,6 +13,11 @@
       "type": "ec2"
     },
     "mydb": {
+      "exposes": {
+        "Url": "ref:mydb:url",
+        "User": "ref:mydb:user",
+        "Password": "ref:mydb:password"
+      },
       "type": "postgres"
     }
   }

@@ -11,7 +11,7 @@ func main() {
 	dbExposes := lif.NewNeonPostgres("mydb")
 
 	// backend
-	_ = lif.NewAwsEC2(
+	_, err := lif.NewAwsEC2(
 		"backend",
 	).OpenPorts([]string{
 		"8080",
@@ -19,5 +19,9 @@ func main() {
 		"DB_URL":  dbExposes.Url,
 		"DB_USER": dbExposes.User,
 		"DB_PASS": dbExposes.Password,
-	})
+	}).PathToDockerfile("../backend/Dockerfile")
+
+	if err != nil {
+		panic(err)
+	}
 }
