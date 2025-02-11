@@ -3,10 +3,11 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/spf13/cobra"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
 func main() {
@@ -67,8 +68,4 @@ func getLastNonEmptyLine(s string) string {
 		}
 	}
 	return ""
-}
-
-func run(pathToInfraJsonFile string) {
-	println("running " + pathToInfraJsonFile)
 }
