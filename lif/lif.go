@@ -13,8 +13,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//BLABLABLABLABLABLABLABLABLA
-
 var (
 	resources = make(map[string]any)
 	// stores concrete values for compose local deployment
@@ -126,7 +124,14 @@ func LifBuild() {
 		panic(err)
 	}
 
-	err = os.WriteFile(".lif/infrastructure.json", jsonBytes, 0644)
+	// make this a temp file
+	tempFile, err := os.CreateTemp("", "lif-infrastructure.json")
+	if err != nil {
+		panic(err)
+	}
+	defer os.Remove(tempFile.Name())
+
+	err = os.WriteFile(tempFile.Name(), jsonBytes, 0644)
 	if err != nil {
 		panic(err)
 	}
@@ -138,19 +143,27 @@ func LifBuild() {
 	}
 
 	// create temp directory for docker-compose
-	tempDir, err := os.MkdirTemp("", "lif-compose-")
+	// i want to see the generated docker compose file in the terminal
+	fmt.Println(string(dockerComposeBytes))
+
+	tempFile, err = os.CreateTemp("", "lif-compose.yml")
 	if err != nil {
 		panic(err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer os.Remove(tempFile.Name())
 
-	composePath := filepath.Join(tempDir, "docker-compose.yml")
-	if err := os.WriteFile(composePath, dockerComposeBytes, 0644); err != nil {
+	if err := os.WriteFile(tempFile.Name(), dockerComposeBytes, 0644); err != nil {
 		panic(err)
 	}
 
-	// Run docker compose up
-	cmd := exec.Command("docker", "compose", "-f", composePath, "up")
+	downCmd := exec.Command("docker", "compose", "-f", tempFile.Name(), "down")
+	if err := downCmd.Run(); err != nil {
+		// it's normal to get errors if no containers exist
+		fmt.Printf("Warning during compose down: %v\n", err)
+	}
+
+	// Then run the existing compose up command
+	cmd := exec.Command("docker", "compose", "-f", tempFile.Name(), "up")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -249,9 +262,11 @@ func GenerateEC2ComposeMap(resourceMap map[string]any) (map[string]any, error) {
 	dockerfileName := filepath.Base(dockerfilePath)
 
 	// resolve references and collect dependencies
-	for k, v := range envVars {
-		ref := v
-		resolvedEnvVars[k] = resolveLocalRef(ref)
+	for _, v := range envVars {
+		ref, err := resolveLocalRef(v)
+		if err != nil {
+			return nil, err
+		}
 
 		// if this env var references another resource, it's a dependency
 		parts := strings.Split(ref, ":")
@@ -273,41 +288,86 @@ func GenerateEC2ComposeMap(resourceMap map[string]any) (map[string]any, error) {
 	return compose, nil
 }
 
-func resolveLocalRef(ref string) string {
-	// ref format is "ref:resourceName:property"
+var (
+	ErrInvalidRefFormat = func(ref string) error {
+		return fmt.Errorf("invalid ref format: %q, expected format 'ref:resourceName:property'", ref)
+	}
+	ErrResourceNotFound = func(resourceName string) error {
+		return fmt.Errorf("resource not found: %q", resourceName)
+	}
+	ErrPropertyNotFound = func(resourceName, property string) error {
+		return fmt.Errorf("property %q not found for resource %q", property, resourceName)
+	}
+)
+
+func resolveLocalRef(ref string) (string, error) {
 	parts := strings.Split(ref, ":")
 	if len(parts) != 3 || parts[0] != "ref" {
-		return ref
+		return "", ErrInvalidRefFormat(ref)
 	}
 
 	resourceName := parts[1]
 	property := parts[2]
 
-	// Check composeResources first
-	if composeRes, exists := composeResources[resourceName]; exists {
-		if val, ok := composeRes[property]; ok {
-			return val.(string)
-		}
+	if value, err := resolveComposeResource(resourceName, property); err == nil {
+		fmt.Println("value", value)
+		return value, nil
 	}
 
-	// Then check regular resources
-	if res, exists := resources[resourceName]; exists {
-		if resourceSpecs, ok := res.(map[string]any); ok && resourceSpecs["type"] == "postgres" {
-			exposes := resourceSpecs["exposes"].(NeonPostgresExposes)
+	// return "", ErrResourceNotFound(resourceName)
 
-			switch property {
-			case "url":
-				return exposes.Url
-			case "user":
-				return exposes.User
-			case "password":
-				return exposes.Password
-			}
-		}
+	return resolveRegularResource(resourceName, property)
+}
+
+func resolveComposeResource(resourceName, property string) (string, error) {
+	composeRes, exists := composeResources[resourceName]
+	if !exists {
+		return "", ErrResourceNotFound(resourceName)
 	}
 
-	// if we can't resolve it, return the original ref??
-	return ref
+	val, ok := composeRes[property]
+	if !ok {
+		return "", ErrPropertyNotFound(resourceName, property)
+	}
+
+	str, ok := val.(string)
+	if !ok {
+		return "", fmt.Errorf("property %q for resource %q is not a string", property, resourceName)
+	}
+
+	return str, nil
+}
+
+func resolveRegularResource(resourceName, property string) (string, error) {
+	res, exists := resources[resourceName]
+	if !exists {
+		return "", ErrResourceNotFound(resourceName)
+	}
+
+	resourceSpecs, ok := res.(map[string]any)
+	if !ok {
+		return "", fmt.Errorf("invalid resource specification for %q", resourceName)
+	}
+
+	if resourceSpecs["type"] != "postgres" {
+		return "", fmt.Errorf("unsupported resource type for %q", resourceName)
+	}
+
+	exposes, ok := resourceSpecs["exposes"].(NeonPostgresExposes)
+	if !ok {
+		return "", fmt.Errorf("invalid exposes field for postgres resource %q", resourceName)
+	}
+
+	switch property {
+	case "url":
+		return exposes.Url, nil
+	case "user":
+		return exposes.User, nil
+	case "password":
+		return exposes.Password, nil
+	default:
+		return "", ErrPropertyNotFound(resourceName, property)
+	}
 }
 
 // creates condition-based dependencies that wait for health checks
