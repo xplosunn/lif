@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"os"
+	"os/exec"
+	"strings"
 )
 
 func main() {
@@ -36,16 +38,37 @@ var versionCmd = &cobra.Command{
 }
 
 var runCmd = &cobra.Command{
-	Use:   "run [FILE]",
-	Short: "Run the code",
+	Use:   "run",
+	Short: "Runs your project locally",
 	Long:  ``,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
-			return errors.New("Please provide a file")
+			return errors.New("Please provide a golang file path")
 		}
 
-		filePath := args[0]
-		run(filePath)
+		golangFilePath := args[0]
+
+		goRunCmdOutput, err := exec.Command("go", "run", golangFilePath).CombinedOutput()
+		if err != nil {
+			return err
+		}
+		infraDefinitionJsonFilePath := getLastNonEmptyLine(string(goRunCmdOutput))
+
+		run(infraDefinitionJsonFilePath)
 		return nil
 	},
+}
+
+func getLastNonEmptyLine(s string) string {
+	lines := strings.Split(s, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			return lines[i]
+		}
+	}
+	return ""
+}
+
+func run(pathToInfraJsonFile string) {
+	println("running " + pathToInfraJsonFile)
 }
