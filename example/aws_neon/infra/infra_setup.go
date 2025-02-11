@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/xplosunn/lif/lif"
+	"github.com/xplosunn/lif/lib/lif"
 )
 
 func main() {
