@@ -1,4 +1,4 @@
-package lif
+package main
 
 import (
 	"crypto/rand"
