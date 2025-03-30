@@ -4,12 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 var (
 	resources = make(map[string]any)
-	// stores concrete values for compose local deployment
-	composeResources = make(map[string]map[string]any)
 )
 
 type AwsEC2 struct {
@@ -59,6 +58,18 @@ func (e *AwsEC2WithPorts) WithEnvVars(envVars map[string]string) *AwsEC2WithEnvV
 }
 
 func (e *AwsEC2WithEnvVars) PathToDockerfile(path string) (*AwsEC2WithDockerfile, error) {
+	// Check if the path is relative (doesn't start with / or drive letter)
+	if !filepath.IsAbs(path) {
+		// Get the caller's file directory to resolve relative paths
+		_, callerFile, _, ok := runtime.Caller(1)
+		if !ok {
+			// Fallback to current directory if we can't get caller info
+			callerFile = "."
+		}
+		callerDir := filepath.Dir(callerFile)
+		path = filepath.Join(callerDir, path)
+	}
+	
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
@@ -118,14 +129,13 @@ func LifBuild() {
 	}
 
 	// make this a temp file
-	tempFile, err := os.CreateTemp("", "lif-infrastructure.json")
+	tempFile, err := os.CreateTemp("", "lif-infrastructure-*.json")
 	if err != nil {
 		panic(err)
 	}
 	println("===================================")
 	println(string(jsonBytes))
 	println("===================================")
-	defer os.Remove(tempFile.Name())
 
 	err = os.WriteFile(tempFile.Name(), jsonBytes, 0644)
 	if err != nil {
@@ -135,6 +145,11 @@ func LifBuild() {
 	if err != nil {
 		panic(err)
 	}
+
+	println("path:", path)
+	println("tempfile:", tempFile.Name())
+
 	println("json definition file:")
-	println(filepath.Join(path, tempFile.Name()))
+
+	println(tempFile.Name())
 }

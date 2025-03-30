@@ -19,7 +19,7 @@ var (
 )
 
 func run(pathToInfraJsonFile string) {
-	jsonBytes, err := os.ReadFile("/tmp/dat")
+	jsonBytes, err := os.ReadFile(pathToInfraJsonFile)
 	if err != nil {
 		panic(err)
 	}
@@ -76,6 +76,7 @@ func GenerateDockerCompose(jsonBytes []byte) ([]byte, error) {
 	var config struct {
 		Resources map[string]any `json:"resources"`
 	}
+
 	if err := json.Unmarshal(jsonBytes, &config); err != nil {
 		return nil, err
 	}
@@ -87,7 +88,7 @@ func GenerateDockerCompose(jsonBytes []byte) ([]byte, error) {
 
 	// first we process postgres resources because the user and password (generated randomly) need to be created
 	// before the EC2 compose section can include them
-	for resourceName, resourceSpecs := range resources {
+	for resourceName, resourceSpecs := range config.Resources {
 		if resourceSpecs.(map[string]any)["type"] == "postgres" {
 			composeMap, err := GeneratePostgresComposeMap(resourceName, resourceSpecs.(map[string]any))
 			if err != nil {
@@ -100,7 +101,7 @@ func GenerateDockerCompose(jsonBytes []byte) ([]byte, error) {
 	// Then process EC2 resources. This depends on the postgres user and password that were randomly
 	// generated in GeneratePostgresComposeMap above. Maybe we could just have hardcoded values for the
 	// user and password and then we wouldn't have to care about the order of operations?
-	for resourceName, resourceSpecs := range resources {
+	for resourceName, resourceSpecs := range config.Resources {
 		if resourceSpecs.(map[string]any)["type"] == "ec2" {
 			composeMap, err := GenerateEC2ComposeMap(resourceSpecs.(map[string]any))
 			if err != nil {
@@ -145,7 +146,7 @@ func GeneratePostgresComposeMap(dbname string, resourceFields map[string]any) (m
 }
 
 func GenerateEC2ComposeMap(resourceMap map[string]any) (map[string]any, error) {
-	envVars := resourceMap["env_vars"].(map[string]string)
+	envVars := resourceMap["env_vars"].(map[string]any)
 	resolvedEnvVars := make(map[string]string)
 	dependencies := make([]string, 0)
 	dockerfilePath := resourceMap["dockerfile"].(string)
@@ -153,26 +154,40 @@ func GenerateEC2ComposeMap(resourceMap map[string]any) (map[string]any, error) {
 	dockerfileName := filepath.Base(dockerfilePath)
 
 	// resolve references and collect dependencies
-	for _, v := range envVars {
-		ref, err := resolveLocalRef(v)
+	for k, v := range envVars {
+		strValue, ok := v.(string)
+		if !ok {
+			// Skip non-string values
+			continue
+		}
+		
+		ref, err := resolveLocalRef(strValue)
 		if err != nil {
 			return nil, err
 		}
+		
+		resolvedEnvVars[k] = ref
 
 		// if this env var references another resource, it's a dependency
-		parts := strings.Split(ref, ":")
+		parts := strings.Split(strValue, ":")
 		if len(parts) == 3 && parts[0] == "ref" {
 			dependencies = append(dependencies, parts[1])
 		}
 	}
 
-	ports := resourceMap["ports"].([]string)
-	for i, port := range ports {
+	portsAny := resourceMap["ports"].([]any)
+	ports := make([]string, len(portsAny))
+	for i, portAny := range portsAny {
+		port, ok := portAny.(string)
+		if !ok {
+			// Try to convert to string if it's not already
+			port = fmt.Sprintf("%v", portAny)
+		}
 		ports[i] = port + ":" + port
 	}
 	compose := map[string]any{
 		"environment": resolvedEnvVars,
-		"ports":       resourceMap["ports"],
+		"ports":       ports,
 		"depends_on":  makeHealthcheckDependencies(dependencies),
 		"build": map[string]string{
 			"context":    buildContext,
@@ -208,9 +223,7 @@ func resolveLocalRef(ref string) (string, error) {
 		return value, nil
 	}
 
-	// return "", ErrResourceNotFound(resourceName)
-
-	return resolveRegularResource(resourceName, property)
+	return "", ErrResourceNotFound(resourceName)
 }
 
 func resolveComposeResource(resourceName, property string) (string, error) {
@@ -230,38 +243,6 @@ func resolveComposeResource(resourceName, property string) (string, error) {
 	}
 
 	return str, nil
-}
-
-func resolveRegularResource(resourceName, property string) (string, error) {
-	res, exists := resources[resourceName]
-	if !exists {
-		return "", ErrResourceNotFound(resourceName)
-	}
-
-	resourceSpecs, ok := res.(map[string]any)
-	if !ok {
-		return "", fmt.Errorf("invalid resource specification for %q", resourceName)
-	}
-
-	if resourceSpecs["type"] != "postgres" {
-		return "", fmt.Errorf("unsupported resource type for %q", resourceName)
-	}
-
-	exposes, ok := resourceSpecs["exposes"].(NeonPostgresExposes)
-	if !ok {
-		return "", fmt.Errorf("invalid exposes field for postgres resource %q", resourceName)
-	}
-
-	switch property {
-	case "url":
-		return exposes.Url, nil
-	case "user":
-		return exposes.User, nil
-	case "password":
-		return exposes.Password, nil
-	default:
-		return "", ErrPropertyNotFound(resourceName, property)
-	}
 }
 
 // creates condition-based dependencies that wait for health checks
